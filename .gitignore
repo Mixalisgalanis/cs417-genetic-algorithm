@@ -1,0 +1,5 @@
+.*
+!/.gitignore
+*.world
+*/.json
+.vscode/launch.json
