@@ -132,12 +132,12 @@ class Chromosome:
                             picked = True
                 day_of_week += 1
 
-                for i in range(self.days):
-                    print("day " + str(i))
-                    counters = {0:0, 1:0 , 2:0, 3:0}
-                    for j in range(employers):
-                        counters[self.grid[j][i]] += 1
-                    print(counters)
+                # for i in range(self.days):
+                #     print("day " + str(i))
+                #     counters = {0:0, 1:0 , 2:0, 3:0}
+                #     for j in range(employers):
+                #         counters[self.grid[j][i]] += 1
+                #     print(counters)
         else:
             indexes = sorted(crossover_params[2]) # a list of crossover point indexes (days) in ascending order
             parentA = crossover_params[0]
@@ -150,11 +150,13 @@ class Chromosome:
                 for i in range(self.employers):
                     self.grid[i][j] = activeParent.grid[i][j]
             self.mutate()
+
         
         self.check_hard_constraint()
         self.check_soft_constraints()
         if verbose: self.describe()
-        # if verbose: self.print()
+        if verbose: self.print()
+        
 
     def print(self):
         print("\nChromosome with " + str(self.employers) + " employers and " + str(self.days) + " days.")
@@ -185,7 +187,7 @@ class Chromosome:
             for m in range(len(self.hard_constraint)):
                 if self.hard_constraint[m][day_of_week] != self.employers_per_shift[m + 1]:
                     self.feasible = False
-                day_of_week = 0 if day_of_week >= 6 else day_of_week + 1
+            day_of_week = 0 if day_of_week >= 6 else day_of_week + 1
 
     def check_soft_constraints(self):
         # 1. max 70 hours of work (cost = 1000)
