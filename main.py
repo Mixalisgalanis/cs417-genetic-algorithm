@@ -44,6 +44,7 @@ class Population:
                 for i in range(len(self.generations[current_gen]) // 2):
                     avg_gen_improvement += self.generations[current_gen][i].improvement_over_parent
                 avg_gen_improvement /= len(self.generations[current_gen])
+                print("GENERATION " + str(current_gen) + ": "+ str(avg_gen_improvement) + " improvement over previous gen.")
                 if avg_gen_improvement < 0:
                     break
             if len(self.generations[current_gen + 1]) == 1:
@@ -57,20 +58,39 @@ class Population:
         method takes into account the cost (penalty of soft constraints) of each chromosome
         into account. Lower costs mean a higher change of that chromosome to be picked as 
         a parent."""
-        sum = 0
+        sum_initial = 0
         parents = []
+        gen_costs = []
+        gen_costs_2 = []
+        # calculate sum
         for i in range(len(self.generations[generation])):
-            sum += 1 / self.generations[generation][i].cost
+            gen_costs.append(1 / self.generations[generation][i].cost)
+            sum_initial += 1 / self.generations[generation][i].cost
+
+        # calculate min
+        min_cost = min(gen_costs)
+        FACTOR = 1.02
+        #print(gen_costs)
+
+        for i in range(len(gen_costs)):
+            gen_costs_2.append(gen_costs[i] - (min_cost / FACTOR)) 
+        #print(gen_costs)
+        sum_costs = sum(gen_costs_2)
+        
+        avg = sum_initial / len(self.generations[generation])
 
         while len(parents) < 2:
             sum_temp = 0
-            pick = random.uniform(0, sum)
-            for i in range(len(self.generations[generation])):
-                sum_temp +=  1 / self.generations[generation][i].cost
+            pick = random.uniform(0, sum_costs)
+            for i in range(len(gen_costs_2)):
+                sum_temp +=  gen_costs_2[i]
                 if sum_temp > pick:
                     if not self.generations[generation][i] in parents:
                         parents.append(self.generations[generation][i])
                     break
+        
+        #for i in parents:
+        #    print("picked parent " + str(i.id) + " with a cost of: " + str(1/i.cost) + ", generation average: " + str(avg))
         return parents
     
     def create_child(self, generation, parents, mutate, verbose):
@@ -87,8 +107,6 @@ class Population:
         for i in range(parentA.days):
             if random.randint(0, 3) == 0: # 25% chance to store this index
                 indexes.append(i)
-
-        print(indexes)
 
         c = Chromosome(self.pop_size, generation, parentA.employers, parentA.days, mutate, crossover_params = (parentA, parentB, indexes), verbose = verbose)
         
@@ -135,6 +153,7 @@ class Chromosome:
                 for j in range(employers):
                     picked = False
                     while picked == False:
+                        #pick = random.randint(0, self.max_shifts)
                         pick = 0 if random.randint(0,1) == 0 else random.randint(1, self.max_shifts) # needed for diversity (0.5 chance to pick 0)
                         for h in range(len(self.hard_constraint)):
                             if pick == h + 1 and shifts_remaining[h+1] > 0:
@@ -158,7 +177,7 @@ class Chromosome:
             activeParent = parentA if random.randint(0,1) == 0 else parentB
             for j in range(self.days):
                 if j in indexes: # if crossover index is found, then toggle active parent
-                    activeParent = parentA if parentB else parentB
+                    activeParent = parentA if activeParent.cost == parentB.cost else parentB
                 for i in range(self.employers):
                     self.grid[i][j] = activeParent.grid[i][j]
         
@@ -171,7 +190,7 @@ class Chromosome:
             self.improvement_over_parent = (avg_parents_cost - self.cost) / avg_parents_cost
         
         if verbose: self.describe()
-        #if verbose: self.print()
+        if verbose: self.print()
         
     def print(self):
         for i in range(self.employers):
@@ -204,10 +223,14 @@ class Chromosome:
             day_of_week = 0 if day_of_week >= 6 else day_of_week + 1
 
     def check_soft_constraints(self):
+        costs = []
+
         # 1. max 70 hours of work (cost = 1000)
         max_work_hours = 70
         cost = 1000
         total_cost = 0
+
+        cost_before = total_cost
 
         for i in range(len(self.grid)):
             sum_work_hours = 0
@@ -216,10 +239,14 @@ class Chromosome:
                     sum_work_hours += self.shift_hours[self.grid[i][j]]
             if sum_work_hours > max_work_hours:
                 total_cost += cost
+
+        costs.append(total_cost - cost_before)
         
         # 2. max 7 consecutive days of work (cost = 1000)
         consecutive_days = 7
         cost = 1000
+
+        cost_before = total_cost
 
         for i in range(self.employers):
             count = 0
@@ -229,10 +256,15 @@ class Chromosome:
                     count = 0
                 else:
                     count = count + 1 if self.grid[i][j] != 0 else 0
+        
+        costs.append(total_cost - cost_before)
+
 
         # 3. max 4 consecutive night shifts (cost = 1000)
         consecutive_night_shifts = 4
         cost = 1000
+
+        # cost_before = total_cost
 
         for i in range(self.employers):
             count = 0
@@ -243,39 +275,53 @@ class Chromosome:
                 else:
                     count = count + 1 if self.grid[i][j] == 3 else 0
                 
-        
+        # costs.append(total_cost - cost_before)
 
         # 4. avoid night shift of a day with a morning shift of the next day (cost = 1000)
         avoid_shift = (3, 1)
         cost = 1000
 
+        cost_before = total_cost
+
         for i in range(self.employers):
             for j in range(self.days - 1):
                 if self.grid[i][j] == avoid_shift[0] and self.grid[i][j+1] == avoid_shift[1]:
                     total_cost += cost
+        
+        # costs.append(total_cost - cost_before)
 
         # 5. avoid afteroon shift of a day with a morning shift of the next day (cost = 800)
         avoid_shift = (2, 1)
         cost = 800
 
+        cost_before = total_cost
+
         for i in range(self.employers):
             for j in range(self.days - 1):
                 if self.grid[i][j] == avoid_shift[0] and self.grid[i][j+1] == avoid_shift[1]:
                     total_cost += cost
+
+        # costs.append(total_cost - cost_before)
 
         # 6. avoid night shift of a day with an afteroon shift of the next day (cost = 800)
         avoid_shift = (3, 2)
         cost = 800
 
+        cost_before = total_cost
+
         for i in range(self.employers):
             for j in range(self.days - 1):
                 if self.grid[i][j] == avoid_shift[0] and self.grid[i][j+1] == avoid_shift[1]:
                     total_cost += cost
 
+        # costs.append(total_cost - cost_before)
+
         # 7. at least 2 days off after 4 consecutive days of night shifts (cost = 100)
         consecutive_night_shifts = 4
         days_off = 2
         cost = 100
+
+        # cost_before = total_cost
 
         for i in range(self.employers):
             for j in range(self.days - (consecutive_night_shifts + days_off - 1)):
@@ -283,26 +329,33 @@ class Chromosome:
                 for k in range(consecutive_night_shifts):
                     if self.grid[i][j+k] == 3:
                         temp_consecutive_night_shifts += 1
-                if not (temp_consecutive_night_shifts == consecutive_night_shifts and self.grid[i][j+consecutive_night_shifts] == 0 and self.grid[i][j+consecutive_night_shifts+1] == 0):
+                if (temp_consecutive_night_shifts == consecutive_night_shifts and (self.grid[i][j+consecutive_night_shifts] != 0 or self.grid[i][j+consecutive_night_shifts+1] != 0)):
                     total_cost += cost
+
+        # costs.append(total_cost - cost_before)
         
         # 8. at least 2 days off after 7 days of work (cost = 100)
         consecutive_days = 7
         days_off = 2
         cost = 100
-        
 
+        # cost_before = total_cost
+        
         for i in range(self.employers):
             for j in range(self.days - (consecutive_days + days_off - 1)):
                 temp_consecutive_days = 0
                 for k in range(consecutive_days):
                     if self.grid[i][j+k] != 0:
                         temp_consecutive_days += 1
-                if not (temp_consecutive_days == consecutive_days and self.grid[i][j+temp_consecutive_days] == 0 and self.grid[i][j+temp_consecutive_days+1] == 0):
+                if temp_consecutive_days == consecutive_days and (self.grid[i][j+temp_consecutive_days] != 0 or self.grid[i][j+temp_consecutive_days+1] != 0):
                     total_cost += cost
+
+        costs.append(total_cost - cost_before)
 
         # 9. avoid day off - work - day off (cost = 1)
         cost = 1
+
+        # cost_before = total_cost
         
 
         for i in range(self.employers):
@@ -321,9 +374,12 @@ class Chromosome:
                         total_cost += cost
                     check = 0
         
+        # costs.append(total_cost - cost_before)
+
         # 10. avoid work - day off - work (cost = 1)
         cost = 1
         
+        cost_before = total_cost
 
         for i in range(self.employers):
             check = 0
@@ -340,11 +396,14 @@ class Chromosome:
                     if self.grid[i][j] == 0:
                         total_cost += cost
                     check = 0
-                
+
+        # costs.append(total_cost - cost_before)  
 
         # 11. max 1 weekend of work (cost = 1)
         max_work_weekends = 1
         cost = 1
+
+        # cost_before = total_cost
 
         for i in range(self.employers):
             day_of_week = 0
@@ -367,7 +426,11 @@ class Chromosome:
                 else:
                     day_of_week += 1
 
+        # costs.append(total_cost - cost_before)
+
         self.cost = total_cost
+
+        # self.costs = costs
 
     def mutate(self):
         for j in range(self.days):
