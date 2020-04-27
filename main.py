@@ -5,7 +5,7 @@ class Population:
     by a list of generations. Each value of this list contains another 
     list of the chromosomes of a particular generation."""
 
-    def __init__(self, pop_size, verbose = False):
+    def __init__(self, pop_size, mutate = True, auto_stop = False, verbose = False):
         """This is the constructor of the Population class. The first pop_size
         chromosomes are created instantly and represent the first generation.
         For each 2 parents a new child is created in a subsequent generation."""
@@ -23,20 +23,32 @@ class Population:
             days = 14
 
             # store chromosome
-            c = Chromosome(i, current_gen, employers, days, verbose = verbose)
+            c = Chromosome(i, current_gen, employers, days, mutate, verbose = verbose)
             temp_chromosomes.append(c)
+
         # insert generated chromosomes into first generations
         self.generations.append(temp_chromosomes)
         
         # generate subsequent generations. creates as many childs as 
         # possible (whenever there are at least 2 parents in a previous generation).
+        if self.pop_size <= 1: return
         while True:
             i = 0
+            # create as many childs in this generation as possible
             for i in range(len(self.generations[current_gen]) // 2):
                 temp_parents = self.roulette_wheel_selection(current_gen)
-                self.create_child(current_gen + 1, temp_parents, verbose)
-            if len(self.generations[current_gen + 1]) == 1: 
+                self.create_child(current_gen + 1, temp_parents, mutate, verbose)
+            # calculate generation cost improvement over the previous one
+            if auto_stop:
+                avg_gen_improvement = 0
+                for i in range(len(self.generations[current_gen]) // 2):
+                    avg_gen_improvement += self.generations[current_gen][i].improvement_over_parent
+                avg_gen_improvement /= len(self.generations[current_gen])
+                if avg_gen_improvement < 0:
+                    break
+            if len(self.generations[current_gen + 1]) == 1:
                 break
+            # proceed to next generation
             current_gen += 1
 
     def roulette_wheel_selection(self, generation):
@@ -61,7 +73,7 @@ class Population:
                     break
         return parents
     
-    def create_child(self, generation, parents, verbose):
+    def create_child(self, generation, parents, mutate, verbose):
         """This function creates a child based on two parents. Crossover indexes are also
         generated in order to extract information from each of the parents."""
 
@@ -76,7 +88,8 @@ class Population:
             if random.randint(0, 3) == 0: # 25% chance to store this index
                 indexes.append(i)
 
-        c = Chromosome(self.pop_size, generation, parentA.employers, parentA.days, crossover_params = (parentA, parentB, indexes), verbose = verbose)
+        c = Chromosome(self.pop_size, generation, parentA.employers, parentA.days, mutate, crossover_params = (parentA, parentB, indexes), verbose = verbose)
+        
         if len(self.generations) >= generation + 1:
             self.generations[generation].append(c)
         else:
@@ -85,7 +98,7 @@ class Population:
                 
 class Chromosome:
 
-    def __init__(self, id, generation, employers, days, crossover_params = None, verbose = False):
+    def __init__(self, id, generation, employers, days, mutate, crossover_params = None, verbose = False):
         self.id = id                    # used for identification
         self.generation = generation    # used for identification
         
@@ -102,10 +115,10 @@ class Chromosome:
         self.max_shifts = 3
         self.shift_hours = {1 : 8, 2 : 8, 3 : 10}
 
-        self.improvement_over_parent = 0 # used for termination condition
+        self.improvement_over_parent = 100 # used for termination condition
         
         # crossover_params : (parentA, parentB, [index1, index2, ... indexN])
-        if crossover_params is None: # Does not perform crossover between parents
+        if crossover_params is None: # Does not perform crossover between parents (first gen only)
             day_of_week = 0
             for i in range(self.days):
                 sum_shifts = 0
@@ -131,14 +144,11 @@ class Chromosome:
                             self.grid[j][i] = pick
                             picked = True
                 day_of_week += 1
+            
+            self.check_hard_constraint()   
+            self.check_soft_constraints()
 
-                # for i in range(self.days):
-                #     print("day " + str(i))
-                #     counters = {0:0, 1:0 , 2:0, 3:0}
-                #     for j in range(employers):
-                #         counters[self.grid[j][i]] += 1
-                #     print(counters)
-        else:
+        else: # child is created by parents
             indexes = sorted(crossover_params[2]) # a list of crossover point indexes (days) in ascending order
             parentA = crossover_params[0]
             parentB = crossover_params[1]
@@ -149,15 +159,18 @@ class Chromosome:
                     activeParent = parentA if parentB else parentB
                 for i in range(self.employers):
                     self.grid[i][j] = activeParent.grid[i][j]
-            self.mutate()
-
         
-        self.check_hard_constraint()
-        self.check_soft_constraints()
+            if mutate: self.mutate()
+
+            self.check_hard_constraint()   
+            self.check_soft_constraints()
+
+            avg_parents_cost = (crossover_params[0].cost + crossover_params[1].cost) / 2
+            self.improvement_over_parent = (avg_parents_cost - self.cost) / avg_parents_cost
+        
         if verbose: self.describe()
-        if verbose: self.print()
+        # if verbose: self.print()
         
-
     def print(self):
         print("\nChromosome with " + str(self.employers) + " employers and " + str(self.days) + " days.")
         for i in range(self.employers):
@@ -166,7 +179,7 @@ class Chromosome:
             print()
 
     def describe(self):
-        print("Chromosome " + str(self.id) + "[" + str(self.generation) + "], feasible: " + str(self.feasible) + ", penalty cost: " + str(self.cost))
+        print("Chromosome " + str(self.id) + "[" + str(self.generation) + "], feasible: " + str(self.feasible) + ", penalty cost: " + str(self.cost) + ((", improvement: " + str(round(self.improvement_over_parent, 3)) + "%") if self.generation > 0 else ""))
 
     def check_hard_constraint(self):
         self.feasible = True
@@ -368,7 +381,5 @@ class Chromosome:
 # main
 
 # these are both terminating condition (whichever comes first)
-max_number_of_generations = 2   # max generations
-term_threshold_percent = 5      # min percent improvement over previous generation
-
-pop = Population(2 ** (max_number_of_generations - 1), verbose = True)
+max_number_of_generations = 8   # max generations (term_cond_1)
+pop = Population(2 ** (max_number_of_generations - 1), mutate = False, auto_stop = False, verbose = True)
