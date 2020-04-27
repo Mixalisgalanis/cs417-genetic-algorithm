@@ -5,7 +5,7 @@ class Population:
     by a list of generations. Each value of this list contains another 
     list of the chromosomes of a particular generation."""
 
-    def __init__(self, pop_size, mutate = True, auto_stop = False, verbose = False):
+    def __init__(self, pop_size, mutate = False, auto_stop = False, verbose = False):
         """This is the constructor of the Population class. The first pop_size
         chromosomes are created instantly and represent the first generation.
         For each 2 parents a new child is created in a subsequent generation."""
@@ -68,7 +68,7 @@ class Population:
             for i in range(len(self.generations[generation])):
                 sum_temp +=  1 / self.generations[generation][i].cost
                 if sum_temp > pick:
-                    if not i in parents:
+                    if not self.generations[generation][i] in parents:
                         parents.append(self.generations[generation][i])
                     break
         return parents
@@ -87,6 +87,8 @@ class Population:
         for i in range(parentA.days):
             if random.randint(0, 3) == 0: # 25% chance to store this index
                 indexes.append(i)
+
+        print(indexes)
 
         c = Chromosome(self.pop_size, generation, parentA.employers, parentA.days, mutate, crossover_params = (parentA, parentB, indexes), verbose = verbose)
         
@@ -169,10 +171,9 @@ class Chromosome:
             self.improvement_over_parent = (avg_parents_cost - self.cost) / avg_parents_cost
         
         if verbose: self.describe()
-        # if verbose: self.print()
+        #if verbose: self.print()
         
     def print(self):
-        print("\nChromosome with " + str(self.employers) + " employers and " + str(self.days) + " days.")
         for i in range(self.employers):
             for j in range(self.days):
                 print(self.grid[i][j], end = "   ")
@@ -381,5 +382,5 @@ class Chromosome:
 # main
 
 # these are both terminating condition (whichever comes first)
-max_number_of_generations = 8   # max generations (term_cond_1)
+max_number_of_generations = 2   # max generations (term_cond_1)
 pop = Population(2 ** (max_number_of_generations - 1), mutate = False, auto_stop = False, verbose = True)
