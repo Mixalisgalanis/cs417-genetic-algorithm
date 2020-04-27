@@ -5,7 +5,7 @@ class Population:
     by a list of generations. Each value of this list contains another 
     list of the chromosomes of a particular generation."""
 
-    def __init__(self, pop_size, mutate = False, auto_stop = False, verbose = False):
+    def __init__(self, pop_size, crossover_method = 0, mutation_method = 0, min_gen_improvement = 0, verbose = False):
         """This is the constructor of the Population class. The first pop_size
         chromosomes are created instantly and represent the first generation.
         For each 2 parents a new child is created in a subsequent generation."""
@@ -23,7 +23,7 @@ class Population:
             days = 14
 
             # store chromosome
-            c = Chromosome(i, current_gen, employers, days, mutate, verbose = verbose)
+            c = Chromosome(i, current_gen, employers, days, mutation_method, verbose = verbose)
             temp_chromosomes.append(c)
 
         # insert generated chromosomes into first generations
@@ -37,15 +37,20 @@ class Population:
             # create as many childs in this generation as possible
             for i in range(len(self.generations[current_gen]) // 2):
                 temp_parents = self.roulette_wheel_selection(current_gen)
-                self.create_child(current_gen + 1, temp_parents, mutate, verbose)
+                c = Chromosome(self.pop_size, current_gen + 1, temp_parents[0].employers, temp_parents[0].days, mutation_method, crossover_params = (crossover_method, temp_parents[0], temp_parents[1]), verbose = verbose)
+                if len(self.generations) >= current_gen + 2:
+                    self.generations[current_gen + 1].append(c)
+                else:
+                    self.generations.append([c])
+                self.pop_size += 1
             # calculate generation cost improvement over the previous one
-            if auto_stop:
+            if min_gen_improvement > 0:
                 avg_gen_improvement = 0
                 for i in range(len(self.generations[current_gen]) // 2):
                     avg_gen_improvement += self.generations[current_gen][i].improvement_over_parent
                 avg_gen_improvement /= len(self.generations[current_gen])
                 print("GENERATION " + str(current_gen) + ": "+ str(avg_gen_improvement) + " improvement over previous gen.")
-                if avg_gen_improvement < 0:
+                if avg_gen_improvement < min_gen_improvement:
                     break
             if len(self.generations[current_gen + 1]) == 1:
                 break
@@ -93,32 +98,9 @@ class Population:
         #    print("picked parent " + str(i.id) + " with a cost of: " + str(1/i.cost) + ", generation average: " + str(avg))
         return parents
     
-    def create_child(self, generation, parents, mutate, verbose):
-        """This function creates a child based on two parents. Crossover indexes are also
-        generated in order to extract information from each of the parents."""
-
-        parentA = parents[0]
-        parentB = parents[1]
-
-        # Building crossover indexes. The grid can only be splitted vertically 
-        # so hard constraints are not broken. The crossover indexes are random 
-        # and are generated automatically.
-        indexes = []
-        for i in range(parentA.days):
-            if random.randint(0, 3) == 0: # 25% chance to store this index
-                indexes.append(i)
-
-        c = Chromosome(self.pop_size, generation, parentA.employers, parentA.days, mutate, crossover_params = (parentA, parentB, indexes), verbose = verbose)
-        
-        if len(self.generations) >= generation + 1:
-            self.generations[generation].append(c)
-        else:
-            self.generations.append([c])
-        self.pop_size += 1
-                
 class Chromosome:
 
-    def __init__(self, id, generation, employers, days, mutate, crossover_params = None, verbose = False):
+    def __init__(self, id, generation, employers, days, mutation_method, crossover_params = None, verbose = False):
         self.id = id                    # used for identification
         self.generation = generation    # used for identification
         
@@ -170,27 +152,16 @@ class Chromosome:
             self.check_soft_constraints()
 
         else: # child is created by parents
-            indexes = sorted(crossover_params[2]) # a list of crossover point indexes (days) in ascending order
-            parentA = crossover_params[0]
-            parentB = crossover_params[1]
-
-            activeParent = parentA if random.randint(0,1) == 0 else parentB
-            for j in range(self.days):
-                if j in indexes: # if crossover index is found, then toggle active parent
-                    activeParent = parentA if activeParent.cost == parentB.cost else parentB
-                for i in range(self.employers):
-                    self.grid[i][j] = activeParent.grid[i][j]
-        
-            if mutate: self.mutate()
-
+            self.crossover(crossover_params)
+            self.mutate(mutation_method)
             self.check_hard_constraint()   
             self.check_soft_constraints()
 
-            avg_parents_cost = (crossover_params[0].cost + crossover_params[1].cost) / 2
+            avg_parents_cost = (crossover_params[1].cost + crossover_params[2].cost) / 2
             self.improvement_over_parent = (avg_parents_cost - self.cost) / avg_parents_cost
         
         if verbose: self.describe()
-        if verbose: self.print()
+        #if verbose: self.print()
         
     def print(self):
         for i in range(self.employers):
@@ -432,18 +403,49 @@ class Chromosome:
 
         # self.costs = costs
 
-    def mutate(self):
+    def crossover(self, crossover_params):
+        indexes = []
+        parentA = crossover_params[1]
+        parentB = crossover_params[2]
+
+        # select crossover method
+        if crossover_params[0] == 0: # method 0 (off)
+            self.grid = parentA.grid if random.randint(0,1) == 1 else parentB.grid
+            return
+        elif crossover_params[0] == 1: # method 1 (simple method)
+            pick = random.randint(1,parentA.days - 1)
+            indexes.append(pick)
+        elif crossover_params[0] == 2: # method 2 (random crossover points method)
+            for i in range(parentA.days):
+                if random.randint(0, 3) == 0: # 25% chance to store this index
+                    indexes.append(i)
+        
+        # begin crossover procedure
+        activeParent = parentA if random.randint(0,1) == 0 else parentB
         for j in range(self.days):
-            swaps = random.randint(0, self.employers // 15)
-            for i in range(swaps):
-                swap_index_1 = random.randint(0, self.employers - 1)
-                swap_index_2 = random.randint(0, self.employers - 1)
-                temp_shift = self.grid[swap_index_1][j]
-                self.grid[swap_index_1][j] = self.grid[swap_index_2][j]
-                self.grid[swap_index_2][j] = temp_shift
+            if j in indexes: # if crossover index is found, then toggle active parent
+                activeParent = parentA if activeParent.cost == parentB.cost else parentB
+            for i in range(self.employers):
+                self.grid[i][j] = activeParent.grid[i][j]
 
-# main
+    def mutate(self, mode):
+        if mode == 1:# method 1, random vertical swaps
+            for j in range(self.days):
+                swaps = random.randint(0, self.employers // 15)
+                for i in range(swaps):
+                    swap_index_1 = random.randint(0, self.employers - 1)
+                    swap_index_2 = random.randint(0, self.employers - 1)
+                    temp_shift = self.grid[swap_index_1][j]
+                    self.grid[swap_index_1][j] = self.grid[swap_index_2][j]
+                    self.grid[swap_index_2][j] = temp_shift
+        elif mode == 2: # method 2, inversion of order of shifts in a day
+            for j in range(self.days):
+                shifts = [row[j] for row in self.grid]
+                shifts.reverse()
+                for i in range(len(shifts)):
+                    self.grid[i][j] = shifts[i]
 
-# these are both terminating condition (whichever comes first)
+# MAIN
 max_number_of_generations = 2   # max generations (term_cond_1)
-pop = Population(2 ** (max_number_of_generations - 1), mutate = False, auto_stop = False, verbose = True)
+min_gen_improvement = 0         # minimum gen-over-gen improvement to keep going (term_cond_2)
+pop = Population(2 ** (max_number_of_generations - 1), crossover_method = 1, mutation_method = 0, min_gen_improvement = min_gen_improvement, verbose = True)
