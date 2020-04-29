@@ -37,7 +37,7 @@ class Population:
             i = 0
             # create as many childs in this generation as possible
             for i in range(len(self.generations[current_gen]) // 2):
-                temp_parents = self.roulette_wheel_selection(current_gen)
+                temp_parents = self.roulette(current_gen)
                 c = Chromosome(self.pop_size, current_gen + 1, temp_parents[0].employers, temp_parents[0].days, mutation_params = mutation_params, crossover_params = (crossover_params[0], crossover_params[1], temp_parents[0], temp_parents[1]), verbose = verbose)
                 if len(self.generations) >= current_gen + 2:
                     self.generations[current_gen + 1].append(c)
@@ -45,7 +45,7 @@ class Population:
                     self.generations.append([c])
                 self.pop_size += 1
             # calculate generation cost improvement over the previous one
-            if min_gen_improvement > 0:
+            if min_gen_improvement >= 0:
                 avg_gen_improvement = 0
                 for i in range(len(self.generations[current_gen]) // 2):
                     avg_gen_improvement += self.generations[current_gen][i].improvement_over_parent
@@ -72,7 +72,7 @@ class Population:
         plt.legend(['lowest', 'average', 'highest'])
         plt.show()
 
-    def roulette_wheel_selection(self, generation): # selection method
+    def roulette(self, generation): # selection method
         """This function picks two parents from a pool of chromosomes in a particular
         generation. Both of the parents have to be different chromosomes. The roulette
         method takes into account the cost (penalty of soft constraints) of each chromosome
@@ -277,7 +277,7 @@ class Chromosome:
                         self.grid[swap_index_2][j] = temp_shift
             else: # method 2, inversion of order of shifts in a day
                 for j in range(self.days):
-                    if random.randit(0, 4): # around 20% chance
+                    if random.randint(0, 4): # around 20% chance
                         shifts = [row[j] for row in self.grid]
                         shifts.reverse()
                         for i in range(len(shifts)):
@@ -480,7 +480,7 @@ class Chromosome:
 
 # ========================= MAIN =========================
 # setting up variables (editable) ------------------------
-max_gens = 8            # max generations (term_cond_1)
+max_gens = 10           # max generations (term_cond_1)
 min_improvement = 0     # enforce minimum gen-over-gen percentage (term_cond_2)
 
 p_cross = 0.8                   # propability of applying crossover (recommended > 0.5)
